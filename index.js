@@ -1,5 +1,6 @@
 import express, { json } from "express"
 import { _config } from "./config/config.js";
+import cookieParser from "cookie-parser";
 import { DB_connection, disconnect_DB } from "./config/db.js";
 import user_router from "./routes/user.routes.js";
 import content_router from "./routes/content.routes.js";
