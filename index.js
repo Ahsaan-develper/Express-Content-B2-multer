@@ -7,8 +7,14 @@ import content_router from "./routes/content.routes.js";
 
 const app = express();
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
 
+app.use(async (req, res , next)=>{
+    await DB_connection;
+    next();
+})
 // user
 app.use("/user", user_router);
 
