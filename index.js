@@ -18,18 +18,31 @@ app.use("/upload" , content_router);
 
 // connection for server
 
-const connectServer = async ()=>{
-    await DB_connection();
-    app.listen(_config.Port  , ()=>{
-        console.log("Server is running on port ", _config.Port);
+// const connectServer = async ()=>{
+//     await DB_connection();
+//     app.listen(_config.Port  , ()=>{
+//         console.log("Server is running on port ", _config.Port);
         
-    });
+//     });
 
-    process.on ("SIGINT" ,async ()=>{
-        await disconnect_DB;
+//     process.on ("SIGINT" ,async ()=>{
+//         await disconnect_DB;
 
-        process.exit(1);
-    })
+//         process.exit(1);
+//     })
+// }
+
+
+if (_config.node_env !== "production"){
+    const create_server = async()=>{
+        await DB_connection();
+        app.listen(_config.Port, ()=>{
+             console.log("Server is running on port", _config.Port);
+        })
+    }
+
+    create_server();
 }
 
-connectServer();
+// connectServer();
+export default app;
