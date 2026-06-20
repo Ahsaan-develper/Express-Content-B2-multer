@@ -1,17 +1,13 @@
-import { _config} from "../config/config.js";
-import { b2 } from "../config/b2.js"
-import fs from "fs";
-import path from "path";
+import { _config } from "../config/config.js";
+import { b2 } from "../config/b2.js";
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 const ALLOWED_TYPES = [
-    // Videos
     "video/mp4",
     "video/webm",
     "video/quicktime",
     "video/x-msvideo",
     "video/mpeg",
-    // PDFs
     "application/pdf"
 ];
 
@@ -30,8 +26,8 @@ export const uploadToB2 = async (req, res, next) => {
         // Validate file types and sizes
         for (const file of files) {
             if (!ALLOWED_TYPES.includes(file.mimetype)) {
-                // Clean up invalid file
-                fs.unlinkSync(file.path);
+                // ERROR: fs.unlinkSync(file.path) - file.path is undefined with memoryStorage
+                // No need to delete anything with memoryStorage
                 return res.status(400).json({
                     success: false,
                     message: `Invalid file type: ${file.mimetype}. Only videos and PDFs are allowed`
@@ -39,7 +35,7 @@ export const uploadToB2 = async (req, res, next) => {
             }
 
             if (file.size > MAX_FILE_SIZE) {
-                fs.unlinkSync(file.path);
+                //  ERROR: fs.unlinkSync(file.path) - file.path is undefined with memoryStorage
                 return res.status(400).json({
                     success: false,
                     message: `File too large: ${(file.size / 1024 / 1024).toFixed(2)}MB. Maximum allowed is 100MB`
@@ -50,7 +46,6 @@ export const uploadToB2 = async (req, res, next) => {
         // Authorize with B2
         await b2.authorize();
 
-        // Get upload URL (reusable for multiple files in same batch)
         const { data: uploadUrlData } = await b2.getUploadUrl({
             bucketId: _config.bucket_id
         });
@@ -58,8 +53,11 @@ export const uploadToB2 = async (req, res, next) => {
         const uploadedFiles = [];
 
         for (const file of files) {
-            const filePath = file.path;
-            const fileData = fs.readFileSync(filePath);
+            //  ERROR: const filePath = file.path; - undefined with memoryStorage
+            //  ERROR: const fileData = fs.readFileSync(filePath); - crashes because filePath is undefined
+            
+            //  FIX: Use file.buffer directly from memoryStorage
+            const fileData = file.buffer;
 
             // Create clean filename
             const timestamp = Date.now();
@@ -71,13 +69,12 @@ export const uploadToB2 = async (req, res, next) => {
                 uploadUrl: uploadUrlData.uploadUrl,
                 uploadAuthToken: uploadUrlData.authorizationToken,
                 fileName: b2FileName,
-                data: fileData,
+                data: fileData,        // FIX: file.buffer from memoryStorage
                 contentType: file.mimetype
             });
 
-            // Delete temp file after successful upload
-            fs.unlinkSync(filePath);
-            console.log("Temp file deleted successfully");
+            //  ERROR: fs.unlinkSync(filePath); - no temp file to delete with memoryStorage
+            //  FIX: Removed - nothing to clean up with memoryStorage
 
             // Build public URL
             const fileUrl = `https://f002.backblazeb2.com/file/${_config.bucket_name}/${b2FileName}`;
@@ -101,14 +98,9 @@ export const uploadToB2 = async (req, res, next) => {
         next();
 
     } catch (error) {
-        // Clean up all temp files on error
-        const files = req.files || [req.file];
-        files?.forEach(file => {
-            if (file?.path && fs.existsSync(file.path)) {
-                fs.unlinkSync(file.path);
-            }
-        });
-
+        // ❌ ERROR: Cleanup code tries to access file.path which is undefined
+        // ✅ FIX: No cleanup needed with memoryStorage - file is in RAM, auto-garbage collected
+        
         console.error("B2 upload error:", error);
 
         return res.status(500).json({
@@ -119,8 +111,6 @@ export const uploadToB2 = async (req, res, next) => {
     }
 };
 
-
-
 export const deleteFromB2 = async (fileUrl) => {
     try {
         await b2.authorize();
@@ -129,9 +119,9 @@ export const deleteFromB2 = async (fileUrl) => {
         const urlParts = fileUrl.split('/');
         const fileName = urlParts.slice(urlParts.indexOf('file') + 2).join('/');
         
-        // 1. Find the fileId first (since you don't have it stored)
+        // 1. Find the fileId first
         const { data: fileVersions } = await b2.listFileVersions({
-            bucketId: process.env.B2_BUCKET_ID,
+            bucketId: _config.bucket_id,  
             startFileName: fileName,
             maxFileCount: 1
         });
@@ -152,6 +142,6 @@ export const deleteFromB2 = async (fileUrl) => {
         console.log("Deleted from B2:", fileName);
         
     } catch (error) {
-        console.error(" B2 delete failed:", error.message);
+        console.error("B2 delete failed:", error.message);
     }
 };
